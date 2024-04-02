@@ -264,9 +264,9 @@ void printSFCR(vector<SFCR *> &sfcrs)
 
 void printCluster(Cluster *cluster){
     cout<<"Cluster: \n";
-    cout<<"Source Node: "<<cluster->sourceNode->id<<endl;
-    cout<<"Center: X: "<<cluster->center.x<<" Y: "<<cluster->center.y<<" Z: "<<cluster->center.z<<endl;
-    cout<<"Nodes: ";
+    cout<<"\tSource Node: "<<cluster->sourceNode->id<<endl;
+    cout<<"\tCenter: X: "<<cluster->center.x<<" Y: "<<cluster->center.y<<" Z: "<<cluster->center.z<<endl;
+    cout<<"\tCluster Nodes: ";
     for(Node *node : cluster->nodes){
         cout<<node->id<<" ";
     }
@@ -660,12 +660,18 @@ void algorithm2(SFCR *sfcr, Cluster *cluster, vector<Node *> &available_satellit
             numberOfVNFs++;
         } 
     } 
-    
-    cout<<"k shortest paths: \n";
-    auto kShortestPaths = kShortestPath(cluster->sourceNode, totalAvailableNodes, totalAvailableLinks, numberOfVNFs);
-    cout<<"k shortest paths found\n";
-    cout<<"Number of sets: "<<sfcr->sets.size()<<"\n";
+    cout<<"Number of sets: "<<sfcr->sets.size()<<endl;
     cout<<"Number of VNfs: "<<numberOfVNFs<<endl;
+    cout<<"\nPrinting k shortest paths: \n";
+    auto kShortestPaths = kShortestPath(cluster->sourceNode, totalAvailableNodes, totalAvailableLinks, numberOfVNFs);
+    if(kShortestPaths.size() == 0){
+        cout<<"KSP failed for SFCR "<<sfcr->id<<"\n";
+        return;
+    }
+    else{
+        cout<<"Number of paths found: "<<kShortestPaths.size()<<endl;
+    }
+
     //print the k shortest paths
     for (int idx = 0; idx < kShortestPaths.size(); ++idx) {
         cout << "Path " << idx + 1 << ": Cost=" << kShortestPaths[idx].first << ", Path=";
@@ -687,12 +693,13 @@ void algorithm2(SFCR *sfcr, Cluster *cluster, vector<Node *> &available_satellit
     int chosenPath = 0;
     for(int i = 0; i < Kpaths.size(); i++){
         vector<Node *> path = Kpaths[i].second;
+        cout<<"Testing Deployment in Path "<<i+1<<endl;
         if(deployVNFsOnPath(path, sfcr->sets)){
             chosenPath = i;
             cout<<"Succesfully deployed onto Path " << i+1 << endl;
             break;
         }
-        cout<<"Unsuccesfull deployment on Path " << i+1 << endl;
+        cout<<"Rejected Path " << i+1 << endl;
     }
 }
 
@@ -709,15 +716,19 @@ int main(){
     // printLinks(links);
     // printVNFs(VNFS);
     // printSFCR(SFCRS);
+    cout<<"Total number of SFCRS: "<<SFCRS.size()<<endl;
     for(SFCR *sfc: SFCRS){
+        cout<<"\n\nSFCR: "<<sfc->id<<" Source Node id: "<<sfc->sourceNode->id<<endl;
+        //Create the Cluster
         Cluster *cluster = create_cluster(sfc->sourceNode, nodes);
+        printCluster(cluster);
+        //Find the Available Satellites for the Cluster
         vector<Node *> available_satellites = algorithm1(sfc, cluster, nodes, links, VNFS);
-        // cout<<"number of satellites available: "<<available_satellites.size()<<endl;
-        // printCluster(cluster);
-        cout<<"satellites found"<<endl;
+        cout<<"number of satellites available: "<<available_satellites.size()<<endl;
+        
         // printNodes(available_satellites);
+        // Find KSP and Deploy the Nodes
         algorithm2(sfc, cluster, available_satellites, links);
-        break;
     }
 
     return 0;
