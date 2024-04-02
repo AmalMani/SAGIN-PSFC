@@ -518,6 +518,13 @@ bool deployVNFsOnPath(vector<Node *> path, vector<SET *> sets)
     vector<SET *> parallelSets;
     vector<SET *> seriesSets;
 
+    unordered_map<int, bool> deployedNodes;
+
+    for (Node *node : path)
+    {
+        deployedNodes[node->id] = false;
+    }
+
     for (SET *set : sets)
     {
         if (set->vnfs.size() > 1)
@@ -539,12 +546,15 @@ bool deployVNFsOnPath(vector<Node *> path, vector<SET *> sets)
             found = false;
             for (Node *node : path)
             {
+                if(deployedNodes[node->id])
+                    continue;
                 if (node->cpuAvailable >= vnf->cpuRequirement && node->memAvailable >= vnf->memRequirement)
                 {
                     node->cpuAvailable -= vnf->cpuRequirement;
                     node->memAvailable -= vnf->memRequirement;
                     set->deployedNodes.push_back(node);
                     found = true;
+                    deployedNodes[node->id] = true;
                     break;
                 }
             }
@@ -559,12 +569,8 @@ bool deployVNFsOnPath(vector<Node *> path, vector<SET *> sets)
                         node->memAvailable += vnf->memRequirement;
                     }
                 }
-                break;
+                return false; // path rejected
             }
-        }
-        if (!found)
-        {
-            break;
         }
     }
 
@@ -576,13 +582,16 @@ bool deployVNFsOnPath(vector<Node *> path, vector<SET *> sets)
         {
             found = false;
             for (Node *node : path)
-            {
+            { 
+                if(deployedNodes[node->id])
+                    continue;
                 if (node->cpuAvailable >= vnf->cpuRequirement && node->memAvailable >= vnf->memRequirement)
                 {
                     node->cpuAvailable -= vnf->cpuRequirement;
                     node->memAvailable -= vnf->memRequirement;
                     set->deployedNodes.push_back(node);
                     found = true;
+                    deployedNodes[node->id] = true;
                     break;
                 }
             }
@@ -675,9 +684,11 @@ void algorithm2(SFCR *sfcr, Cluster *cluster, vector<Node *> &available_satellit
         Kpaths.push_back({kShortestPaths[i].first, path});
     }
 
+    int chosenPath = 0;
     for(int i = 0; i < Kpaths.size(); i++){
         vector<Node *> path = Kpaths[i].second;
         if(deployVNFsOnPath(path, sfcr->sets)){
+            chosenPath = i;
             cout<<"Succesfully deployed onto Path " << i+1 << endl;
             break;
         }
