@@ -466,6 +466,8 @@ Cluster *create_cluster(Node *sourceNode, vector<Node *> &nodes){
     cluster->center.x = x/n;
     cluster->center.y = y/n;
     cluster->center.z = z/n;
+
+    return cluster;
 }
 
 vector<Node *> algorithm1(SFCR *sfc, Cluster *cluster, vector<Node *> &nodes, vector<Link *> &links, vector<VNF *> &VNFS){
