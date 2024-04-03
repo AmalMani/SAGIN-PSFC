@@ -96,6 +96,7 @@ class Graph{
     public:
         void add_edge(int u, int v, double w){
             graph[u].push_back({v, w});
+            graph[v].push_back({u,w});
         }
 
         vector<pair<double, vector<int>>> dijkstra(int src, int length, int k = 3) {
