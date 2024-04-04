@@ -749,15 +749,28 @@ void algorithm2(SFCR *sfcr, Cluster *cluster, vector<Node *> &available_satellit
     cout << "Number of Links: " << totalAvailableLinks.size() << endl;
     cout << "\nFinding k shortest paths: \n";
 
-    std::priority_queue<std::pair<double, std::vector<Node *>>, std::vector<std::pair<double, std::vector<Node *>>>, Compare> kShortestPaths = kShortestPath(cluster->sourceNode, totalAvailableLinks, sfcr->sets.size(), numberOfVNFs, graphs, K);
+    std::priority_queue<std::pair<double, std::vector<Node *>>, std::vector<std::pair<double, std::vector<Node *>>>, Compare> kShortestPaths = kShortestPath(cluster->sourceNode, totalAvailableLinks, numberOfVNFs-1, numberOfVNFs, graphs, K);
 
     // print the k shortest paths
+    cout<<"K shortest Paths found:"<< endl;
+
     for (int idx = 0; idx < K; ++idx)
     {
+        cout<<"Deploying nodes in ";
         cout << "Path " << idx + 1 << ": Cost=" << kShortestPaths.top().first << ", Path=";
-        for (Node *node : kShortestPaths.top().second)
+        vector<Node *> path = kShortestPaths.top().second;
+        for (Node *node : path)
         {
             cout << node->id << " ";
+        }
+        if(deployVNFsOnPath(path, sfcr->sets))
+        {
+            cout << " VNFs deployed successfully" << endl;
+            break;
+        }
+        else
+        {
+            cout << " VNFs deployment failed" << endl;
         }
         cout << endl;
         kShortestPaths.pop();
