@@ -749,7 +749,7 @@ void algorithm2(SFCR *sfcr, Cluster *cluster, vector<Node *> &available_satellit
     cout << "Number of Links: " << totalAvailableLinks.size() << endl;
     cout << "\nFinding k shortest paths: \n";
 
-    std::priority_queue<std::pair<double, std::vector<Node *>>, std::vector<std::pair<double, std::vector<Node *>>>, Compare> kShortestPaths = kShortestPath(cluster->sourceNode, totalAvailableLinks, numberOfVNFs-1, numberOfVNFs, graphs, K);
+    std::priority_queue<std::pair<double, std::vector<Node *>>, std::vector<std::pair<double, std::vector<Node *>>>, Compare> kShortestPaths = kShortestPath(cluster->sourceNode, totalAvailableLinks, numberOfVNFs, numberOfVNFs*2, graphs, K);
 
     // print the k shortest paths
     cout<<"K shortest Paths found:"<< endl;
