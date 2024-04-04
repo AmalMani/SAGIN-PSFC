@@ -19,7 +19,7 @@ EARTH_RADIUS = 6371
 
 class Link:
     def __init__(
-        self, node1, node2, weight=random.randint(MIN_EDGE_WEIGHT, MAX_EDGE_WEIGHT)
+        self, node1, node2, weight
     ) -> None:
         self.endpoints = (node1, node2)
         self.bandwidth = random.randint(MIN_EDGE_BANDWIDTH, MAX_EDGE_BANDWIDTH)
@@ -106,7 +106,7 @@ class SFC:
         self.vnf_count = 0
         self.bandwidth_requirement = random.randint(1, 5)
         self.max_tolerated_delay = random.randint(50, 100)
-        self.lifetime = random.randint(500, 1000)
+        self.lifetime = random.randint(5000, 10000)
 
     def __repr__(self) -> str:
         repr_str = f"{self.vnf_count}\n{self.source_node} {self.lifetime} {self.bandwidth_requirement} {self.max_tolerated_delay}\n"
@@ -114,6 +114,52 @@ class SFC:
             for vnf in vnf_list:
                 repr_str += f"{vnf.vnf_id} {index + 1}\n"
         return repr_str
+    
+    
+def revise_k_shortest(k_shortest, new_path, new_cost, k):
+    if len(k_shortest) < k:
+        k_shortest.add((new_path, new_cost))
+        return
+    max_existing = max(k_shortest, key=lambda x : x[1])
+    if max_existing[1] > new_cost:
+        k_shortest.remove(max_existing)
+        k_shortest.add((new_path, new_cost))
+
+    
+def rec_bfs(min_nodes, max_nodes, src:GroundNode, node_lookup, k):
+    curr = [(src, tuple([src]), {src}, 0)]
+    k_shortest = set()
+    
+    while curr:
+        next_nodes = []
+        for start_node, path_so_far, visited, path_cost in curr:
+            for neighbor_id in start_node.edges.keys():
+                if neighbor_id not in node_lookup:
+                    continue
+                link = start_node.edges[neighbor_id]
+                neighbor = node_lookup[neighbor_id]
+                if neighbor in visited:
+                    continue
+                new_path = path_so_far+(neighbor, )
+                new_visited = visited.union({neighbor})
+                new_cost = path_cost + link.weight
+                if len(new_path) >= min_nodes:
+                    # print(new_path)
+                    revise_k_shortest(k_shortest, new_path, new_cost, k)
+                if len(new_path) <= max_nodes:
+                    next_nodes.append((neighbor, new_path, new_visited, new_cost))
+        curr = next_nodes
+    return k_shortest
+        
+
+def find_k_shortest_paths(k, sfc: SFC, node_lookup):
+    min_number_of_nodes = len(sfc.vnf_list)
+    max_number_of_nodes = sfc.vnf_count
+    src = node_lookup[sfc.source_node]
+    return rec_bfs(min_number_of_nodes, max_number_of_nodes, src, node_lookup, k)
+    
+    
+    
 
 
 def main():
@@ -150,7 +196,7 @@ def main():
                     random.choice([1, 1, 1, 1, 2, 3]) % len(curr_cluster),
                 )
                 for neighbor in connections:
-                    edge = Link(neighbor.node_id, new_node.node_id)
+                    edge = Link(neighbor.node_id, new_node.node_id, random.randint(MIN_EDGE_WEIGHT, MAX_EDGE_WEIGHT))
                     new_node.edges[neighbor.node_id] = edge
                     neighbor.edges[new_node.node_id] = edge
                     link_list.append(edge)
@@ -168,7 +214,7 @@ def main():
 
     for _ in range(number_of_nodes // 2, 3 * number_of_nodes // 2):
         node_id1, node_id2 = random.sample(range(number_of_nodes), 2)
-        edge = Link(node_id1, node_id2)
+        edge = Link(node_id1, node_id2, random.randint(MIN_EDGE_WEIGHT, MAX_EDGE_WEIGHT))
         node_lookup[node_id1].edges[node_lookup[node_id2].node_id] = edge
         node_lookup[node_id2].edges[node_lookup[node_id1].node_id] = edge
         link_list.append(edge)
@@ -222,6 +268,7 @@ def main():
                         sfc.vnf_list[(i + index) % len(sfc.vnf_list)].append(vnf)
                         break
             sfc.vnf_count += 1
+            
     for sfc in sfc_list:
         if sfc.vnf_count == 0:
             new_vnf = VNF(number_of_vfns)
@@ -242,6 +289,17 @@ def main():
     file.write(f"{len(vnf_list)}\n")
     for vnf in vnf_list:
         file.write(f"{vnf}")
+        
+    ksps = find_k_shortest_paths(5, sfc_list[0], node_lookup)
+    print("SOURCE NODE: ", sfc_list[0].source_node)
+    # print(ksps)
+    for info in ksps:
+        path, weight = info
+        print("Path: ", end = "")
+        for node in path:
+            print(node.node_id, end = " ")
+        print(", Weight: ", weight)
+
 
 
 main()
@@ -260,3 +318,11 @@ main()
 # ({vnf1, vnf2} {vnf3} {vnf4, vnf5})
 
 # 10 sfcs, max 4 sets, max 3 vnfs per set
+
+
+# 
+# number of nodes has bounds
+# k such shortest paths
+
+
+
