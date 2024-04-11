@@ -230,6 +230,11 @@ def main():
             node_lookup[groundnode_id].edges[new_satellite.node_id] = edge
             new_satellite.edges[groundnode_id] = edge
             link_list.append(edge)
+        for old_satellite in satellites:
+            edge = Link(old_satellite.node_id, new_satellite.node_id, 0)
+            old_satellite.edges[new_satellite.node_id] = edge
+            new_satellite.edges[old_satellite.node_id] = edge
+            link_list.append(edge)
 
         satellites.append(new_satellite)
 
