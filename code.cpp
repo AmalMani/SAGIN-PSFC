@@ -82,8 +82,9 @@ struct VNF
 struct SET
 {
     int id;
+    double highestDelay;
     vector<VNF *> vnfs;
-    vector<Node *> deployedNodes;
+    unordered_map<VNF *, Node *> vnfNodeMap;
 };
 
 struct SFCR
@@ -102,8 +103,10 @@ struct Path
     int cost;
 };
 
-struct Compare {
-    bool operator()(const std::pair<double, std::vector<Node *>>& a, const std::pair<double, std::vector<Node *>>& b) const {
+struct Compare
+{
+    bool operator()(const std::pair<double, std::vector<Node *>> &a, const std::pair<double, std::vector<Node *>> &b) const
+    {
         return a.first > b.first; // Compare based on the first element (double value)
     }
 };
@@ -177,8 +180,6 @@ public:
                     if (new_path.size() <= max_nodes)
                     {
                         next_nodes.push_back(make_tuple(neighbor, new_path, new_visited, new_cost));
-
-                        
                     }
                 }
             }
@@ -304,7 +305,7 @@ void printSFCR(vector<SFCR *> &sfcrs)
             {
                 cout << vnf->id << " ";
             }
-            cout<<endl;
+            cout << endl;
         }
     }
 }
@@ -362,7 +363,7 @@ void initializeNodesAndLinks(vector<Node *> &nodes, vector<Link *> &links)
         node->cpuAvailable = node->cpuCapacity;
         node->memAvailable = node->memCapacity;
         // cout<<"height: "<<node->height;
-        node->velocity = EARTH_RADIUS  * sqrt(9.8 / (EARTH_RADIUS + node->height)*1000);
+        node->velocity = EARTH_RADIUS * sqrt(9.8 / (EARTH_RADIUS + node->height) * 1000);
         // cout<<" velocity: "<<node->velocity<<endl;
         if (type == 1)
         {
@@ -469,6 +470,7 @@ void initializeSFCR(vector<SFCR *> &sfcrs, vector<VNF *> &allVNFs, vector<Node *
             {
                 set = new SET();
                 set->id = setNumber;
+                set->highestDelay = 0.0;
                 sfc->sets.push_back(set);
             }
             else
@@ -480,6 +482,10 @@ void initializeSFCR(vector<SFCR *> &sfcrs, vector<VNF *> &allVNFs, vector<Node *
             if (it)
             {
                 set->vnfs.push_back(it);
+                if (set->highestDelay < it->delay)
+                {
+                    set->highestDelay = it->delay;
+                }
             }
             else
             {
@@ -545,7 +551,7 @@ vector<Node *> algorithm1(SFCR *sfc, Cluster *cluster, vector<Node *> &nodes, ve
                 continue;
             // cout<<"ratio: "<<ratio<<endl;
             double visibility_window = 2 * (EARTH_RADIUS + node->height) * acos(ratio) / node->velocity;
-            // cout<<"visibility window: "<<visibility_window<< " sfc lifetime "<<sfc->lifetime<<endl;
+            cout << "visibility window: " << visibility_window << " sfc lifetime " << sfc->lifetime << endl;
             if (visibility_window > sfc->lifetime)
                 available_satellites.push_back(node);
         }
@@ -586,20 +592,42 @@ std::priority_queue<std::pair<double, std::vector<Node *>>, std::vector<std::pai
     return g.BFS(source, minNodes, maxNodes, K);
 }
 
-bool deployVNFsOnPath(vector<Node *> path, vector<SET *> sets)
+void deallocate_resources(vector<SET *> &sets)
+{
+    for (SET *set : sets)
+    {
+        for (VNF *vnf : set->vnfs)
+        {
+            if (set->vnfNodeMap[vnf])
+            {
+                Node *node = set->vnfNodeMap[vnf];
+                node->cpuAvailable += vnf->cpuRequirement;
+                node->memAvailable += vnf->memRequirement;
+            }
+        }
+    }
+}
+
+bool deployVNFsOnPath(vector<Node *> &path, vector<SET *> &sets, double maxToleratedDelay, double totalLinkDelay)
 {
     vector<SET *> parallelSets;
     vector<SET *> seriesSets;
-
-    unordered_map<int, bool> deployedNodes;
+    unordered_map<Node *, bool> AvailableNodes;
+    double totalProcessingDelay = 0.0;
 
     for (Node *node : path)
     {
-        deployedNodes[node->id] = false;
+        AvailableNodes[node] = true;
     }
 
+    // finding sets with parallel and series VNFs
     for (SET *set : sets)
     {
+        for (VNF *vnf : set->vnfs)
+        {
+            set->vnfNodeMap[vnf] = nullptr;
+        }
+        totalProcessingDelay += set->highestDelay; // Calculating total processing delay
         if (set->vnfs.size() > 1)
         {
             parallelSets.push_back(set);
@@ -610,84 +638,106 @@ bool deployVNFsOnPath(vector<Node *> path, vector<SET *> sets)
         }
     }
 
-    // Deploy
+    // Deploying parallel sets
     for (SET *set : parallelSets)
     {
-        bool found = false;
+        vector<Node *> deployedNodesOfSet;
         for (VNF *vnf : set->vnfs)
         {
-            found = false;
-            for (Node *node : path)
+            bool found = false;
+            // try to deploy in the same nodes where previous VNFs of the set are deployed
+            for (Node *node : deployedNodesOfSet)
             {
-                if (deployedNodes[node->id])
-                    continue;
                 if (node->cpuAvailable >= vnf->cpuRequirement && node->memAvailable >= vnf->memRequirement)
                 {
                     node->cpuAvailable -= vnf->cpuRequirement;
                     node->memAvailable -= vnf->memRequirement;
-                    set->deployedNodes.push_back(node);
+                    set->vnfNodeMap[vnf] = node;
                     found = true;
-                    deployedNodes[node->id] = true;
                     break;
                 }
             }
+
+            if (found)
+                continue;
+
+            // try to deploy in a remaining available node of the path
+            for (Node *node : path)
+            {
+                if (!AvailableNodes[node])
+                    continue;
+
+                if (node->cpuAvailable >= vnf->cpuRequirement && node->memAvailable >= vnf->memRequirement)
+                {
+                    node->cpuAvailable -= vnf->cpuRequirement;
+                    node->memAvailable -= vnf->memRequirement;
+                    set->vnfNodeMap[vnf] = node;
+                    deployedNodesOfSet.push_back(node);
+                    found = true;
+                    break;
+                }
+            }
+
+            // make the deployed nodes of current set unavailable for other sets
+            for (Node *node : deployedNodesOfSet)
+            {
+                AvailableNodes[node] = false;
+            }
+
+            // Deallocate resources of all deployed nodes so far in SFC if the current VNF placement fails
             if (!found)
             {
-                // if VNF placement failed
-                for (SET *set_ : parallelSets)
-                {
-                    for (Node *node : set_->deployedNodes)
-                    {
-                        node->cpuAvailable += vnf->cpuRequirement;
-                        node->memAvailable += vnf->memRequirement;
-                    }
-                }
-                return false; // path rejected
+                deallocate_resources(parallelSets);
+                return false;
             }
         }
     }
 
-    // series VNF sets
+    // Deploying series sets
     for (SET *set : seriesSets)
     {
-        bool found = false;
         for (VNF *vnf : set->vnfs)
         {
-            found = false;
+            bool found = false;
+
+            // try to deploy in an available node of the path
             for (Node *node : path)
             {
-                if (deployedNodes[node->id])
-                    continue;
+                if (!AvailableNodes[node])
+                    continue; // if the node is already used by another set
                 if (node->cpuAvailable >= vnf->cpuRequirement && node->memAvailable >= vnf->memRequirement)
                 {
                     node->cpuAvailable -= vnf->cpuRequirement;
                     node->memAvailable -= vnf->memRequirement;
-                    set->deployedNodes.push_back(node);
+                    set->vnfNodeMap[vnf] = node;
+                    AvailableNodes[node] = false; // make the node unavailable for other sets
                     found = true;
-                    deployedNodes[node->id] = true;
                     break;
                 }
             }
+
             if (!found)
             {
                 // if VNF placement failed
-                for (SET *set_ : sets)
-                {
-                    for (Node *node : set_->deployedNodes)
-                    {
-                        node->cpuAvailable += vnf->cpuRequirement;
-                        node->memAvailable += vnf->memRequirement;
-                    }
-                }
+                deallocate_resources(sets);
                 return false; // rejected
             }
         }
     }
 
+    double totalDelay = totalLinkDelay + totalProcessingDelay;
+    cout << "SFC MaxDelay: " << maxToleratedDelay << " Total delay: " << totalDelay << endl;
+    if (totalDelay > maxToleratedDelay)
+    {
+        // TODO: dellocate resources
+        deallocate_resources(sets);
+        return false;
+    }
+
     return true; // successfully deployed
 }
 
-void algorithm2(SFCR *sfcr, Cluster *cluster, vector<Node *> &available_satellites, vector<Link *> &links, vector<Graph> &graphs, int K)
+bool algorithm2(SFCR *sfcr, Cluster *cluster, vector<Node *> &available_satellites, vector<Link *> &links, vector<Graph> &graphs, int K)
 {
     vector<Node *> totalAvailableNodes;
     vector<Link *> totalAvailableLinks;
@@ -743,29 +793,31 @@ void algorithm2(SFCR *sfcr, Cluster *cluster, vector<Node *> &available_satellit
             numberOfVNFs++;
         }
     }
+
     cout << "Number of sets: " << sfcr->sets.size() << endl;
     cout << "Number of VNfs: " << numberOfVNFs << endl;
     cout << "Number of Nodes: " << totalAvailableNodes.size() << endl;
     cout << "Number of Links: " << totalAvailableLinks.size() << endl;
     cout << "\nFinding k shortest paths: \n";
 
-    std::priority_queue<std::pair<double, std::vector<Node *>>, std::vector<std::pair<double, std::vector<Node *>>>, Compare> kShortestPaths = kShortestPath(cluster->sourceNode, totalAvailableLinks, numberOfVNFs, numberOfVNFs*2, graphs, K);
+    std::priority_queue<std::pair<double, std::vector<Node *>>, std::vector<std::pair<double, std::vector<Node *>>>, Compare> kShortestPaths = kShortestPath(cluster->sourceNode, totalAvailableLinks, sfcr->sets.size() /*numberOfVNFs*/, numberOfVNFs * 2, graphs, K);
 
     // print the k shortest paths
-    cout<<"K shortest Paths found:"<< endl;
-
+    cout << "K shortest Paths found:" << endl;
+    bool deployed = false;
     for (int idx = 0; idx < K; ++idx)
     {
-        cout<<"Deploying nodes in ";
-        cout << "Path " << idx + 1 << ": Cost=" << kShortestPaths.top().first << ", Path=";
+        cout << "Deploying nodes in ";
+        cout << "Path " << idx + 1 << ": Cost=" << kShortestPaths.top().first << ", Path = ";
         vector<Node *> path = kShortestPaths.top().second;
         for (Node *node : path)
         {
             cout << node->id << " ";
         }
-        if(deployVNFsOnPath(path, sfcr->sets))
+        if (deployVNFsOnPath(path, sfcr->sets, sfcr->maxDelay, kShortestPaths.top().first))
         {
             cout << " VNFs deployed successfully" << endl;
+            deployed = true;
             break;
         }
         else
@@ -774,8 +826,8 @@ void algorithm2(SFCR *sfcr, Cluster *cluster, vector<Node *> &available_satellit
         }
         cout << endl;
         kShortestPaths.pop();
-
     }
+    return deployed;
 }
 
 int main()
@@ -793,21 +845,28 @@ int main()
     // printVNFs(VNFS);
     // printSFCR(SFCRS);
     cout << "Total number of SFCRS: " << SFCRS.size() << endl;
+    double acceptance_ratio = 0.0;
+    int sfcs_accepted = 0, number_of_sfcs = SFCRS.size();
     for (SFCR *sfc : SFCRS)
     {
-        cout << "\n\nSFCR: " << sfc->id << " Source Node id: " << sfc->sourceNode->id << endl;
+        cout << "\n\nSFCR: " << sfc->id << " Source Node id: " << sfc->sourceNode->id << " maximum delay: " << sfc->maxDelay << endl;
         // Create the Cluster
         Cluster *cluster = create_cluster(sfc->sourceNode, nodes);
-        // printCluster(cluster);
+
         // Find the Available Satellites for the Cluster
         vector<Node *> available_satellites = algorithm1(sfc, cluster, nodes, links, VNFS);
         cout << "number of satellites available: " << available_satellites.size() << endl;
         // printNodes(available_satellites);
+
         // Find KSP and Deploy the Nodes
         int K = 3;
-        algorithm2(sfc, cluster, available_satellites, links, graphs, K);
-    }
+        bool isSFCdeployed = algorithm2(sfc, cluster, available_satellites, links, graphs, K);
 
-    cout << "size of graphs: " << graphs.size() << endl;
+        if (isSFCdeployed)
+            sfcs_accepted++;
+    }
+    acceptance_ratio = static_cast<double>(sfcs_accepted) / number_of_sfcs;
+    cout << "Number of SFCS : " << number_of_sfcs << endl;
+    cout << "ACCEPTANCE RATIO: " << acceptance_ratio << endl;
     return 0;
 }
