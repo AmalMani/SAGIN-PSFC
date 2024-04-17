@@ -58,10 +58,10 @@ class Satellite(Node):
         self.communication_range = 0
         if self.node_type == 1:
             self.height = random.randint(MIN_LEO_HEIGHT, MAX_LEO_HEIGHT)
-            self.communication_range = int(math.sqrt((self.height * self.height) + (4*CLUSTER_RADIUS * CLUSTER_RADIUS))) + random.randint(2000, 3500)
+            self.communication_range = int(math.sqrt((self.height * self.height) + (4*CLUSTER_RADIUS * CLUSTER_RADIUS))) + random.randint(1000, 1500)
         else:
             self.height = random.randint(MIN_HEO_HEIGHT, MAX_HEO_HEIGHT)
-            self.communication_range = int(math.sqrt((self.height * self.height) + (4*CLUSTER_RADIUS * CLUSTER_RADIUS))) + random.randint(5000, 10000)
+            self.communication_range = int(math.sqrt((self.height * self.height) + (CLUSTER_RADIUS * CLUSTER_RADIUS)))
 
         if cluster_coordinates is None:
             x, y, z = get_random_point_at_height(self.height)
@@ -127,6 +127,8 @@ def get_random_point_at_height(height):
 def add_satellite(new_satellite, satellites, links, node_lookup):
     
     for groundnode in node_lookup.values():
+        if get_distance(groundnode.coordinates, new_satellite.starting_coordinates) > new_satellite.communication_range + 1000:
+            continue
         edge = Link(
             groundnode.node_id,
             new_satellite.node_id,
@@ -136,15 +138,15 @@ def add_satellite(new_satellite, satellites, links, node_lookup):
         groundnode.edges[new_satellite.node_id] = edge
         new_satellite.edges[groundnode.node_id] = edge
         links.append(edge)
-    for old_satellite in satellites:
-        edge = Link(
-            old_satellite.node_id,
-            new_satellite.node_id,
-            get_satellite_distance(old_satellite, new_satellite) / 200000,
-        )
-        old_satellite.edges[new_satellite.node_id] = edge
-        new_satellite.edges[old_satellite.node_id] = edge
-        links.append(edge)
+    # for old_satellite in satellites:
+    #     edge = Link(
+    #         old_satellite.node_id,
+    #         new_satellite.node_id,
+    #         get_satellite_distance(old_satellite, new_satellite) / 200000,
+    #     )
+    #     old_satellite.edges[new_satellite.node_id] = edge
+    #     new_satellite.edges[old_satellite.node_id] = edge
+    #     links.append(edge)
     satellites.append(new_satellite)
     
 
@@ -227,7 +229,6 @@ def main():
             node_id += 1
             curr_cluster.append(new_node)
             if len(curr_cluster) > 1:
-
                 connections = random.sample(
                     curr_cluster[:-1],
                     random.choice([1, 1, 1, 1, 2, 3]) % len(curr_cluster),
@@ -345,7 +346,7 @@ def main():
     for vnf in vnf_list:
         file.write(f"{vnf}")
 
-    print(find_k_shortest_paths(10, sfc_list[0], node_lookup))
+    # print(find_k_shortest_paths(10, sfc_list[0], node_lookup))
 
 
 main()
