@@ -380,7 +380,7 @@ def find_available_satellites(sfc: SFCR, cluster: Cluster, nodes: dict):
         visibility_window = 2 * (R + node.height) * math.acos(ratio) * 1000/ node.velocity
 
         # print(distance, node.communicationRange, visibility_window, sfc.lifetime)
-        if distance - node.communicationRange <= 3000:
+        if distance - node.communicationRange <= 1500:
             if visibility_window >= sfc.lifetime:
                 available_satellites[node_id] = node
             else: print("satellite was in range but visibility window was less")
@@ -404,16 +404,7 @@ def BFS(
     k_shortest = set()
     i = 0
     print("Entered BFS")
-    heo_count, leo_count, groundnode_count = 0, 0, 0
-    for node in totalNodes.values():
-        if node.nodeType == "LEO":
-            leo_count+= 1
-        if node.nodeType == "HEO":
-            heo_count += 1
-        if node.nodeType == "Ground":
-            groundnode_count += 1
-    print(leo_count, heo_count, groundnode_count, len(totalNodes))
-
+    
     # return k_shortest
     while curr:
         print(f"{len(curr)} items in curr")
@@ -606,16 +597,24 @@ def main():
     number_of_SFCS_accepted = 0
     for sfc_id in sfcrs:
         print()
-        print(sfcrs[sfc_id])
-        # print("SFC ID: ", sfc_id)
+        # print(sfcrs[sfc_id])
+        print("SFC ID: ", sfc_id)
         sfc = sfcrs[sfc_id]
         source_node = sfcrs[sfc_id].sourceNode
         cluster_nodes = find_cluster_nodes(nodes, source_node)
         cluster = Cluster(cluster_nodes, source_node)
-        print("Cluster : ", cluster)
+        # print("Cluster : ", cluster)
         available_satellites = find_available_satellites(sfc, cluster, nodes)
         # continue
         # print("satellites available: ", str([(Satellite.id, Satellite.nodeType) for Satellite in available_satellites.values()]))
+        heo_count, leo_count, groundnode_count = 0, 0, 0
+        for node_id in available_satellites:
+            if available_satellites[node_id].nodeType == "LEO":
+                leo_count+= 1
+            if available_satellites[node_id].nodeType == "HEO":
+                heo_count += 1
+        print("Available satellites: ")
+        print("leos: ", leo_count, "heos: ", heo_count, "cluster: ", len(cluster.nodes))
         # continue
         totalNodes = dict(cluster_nodes.items() | available_satellites.items())
         print([node_id for node_id in totalNodes])
