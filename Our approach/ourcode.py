@@ -277,6 +277,10 @@ def initializeNodesAndLinks(nodes: dict, links: list):
     for i in range(1, number_of_links + 1):
         node1 = nodes[int(lines[i][0])]
         node2 = nodes[int(lines[i][1])]
+        distance = get_distance(node1.coordinates, node2.coordinates)
+        if node1.nodeType != 'Ground' and node2.nodeType != 'Ground':
+            if distance > max(node1.communicationRange, node2.communicationRange):
+                continue
         # print(node1, node2)
         latency = float(lines[i][2])
         bandwidth = int(lines[i][3])
@@ -376,7 +380,7 @@ def find_available_satellites(sfc: SFCR, cluster: Cluster, nodes: dict):
         visibility_window = 2 * (R + node.height) * math.acos(ratio) * 1000/ node.velocity
 
         # print(distance, node.communicationRange, visibility_window, sfc.lifetime)
-        if distance - node.communicationRange <= 4000:
+        if distance - node.communicationRange <= 3000:
             if visibility_window >= sfc.lifetime:
                 available_satellites[node_id] = node
             else: print("satellite was in range but visibility window was less")
@@ -394,19 +398,25 @@ def revise_k_shortest(k_shortest: set, new_path, new_cost, k):
 
 
 def BFS(
-    min_nodes: int, max_nodes: int, source: GroundNode, totalNodes: dict, K: int
+    min_nodes: int, max_nodes: int, source: Node, totalNodes: dict, K: int
 ) -> set:
     curr = [(source, tuple([source]), {source}, 0)]
     k_shortest = set()
     i = 0
     print("Entered BFS")
+    heo_count, leo_count, groundnode_count = 0, 0, 0
     for node in totalNodes.values():
         if node.nodeType == "LEO":
-            print("leo exists in totalnodes")
-            break
+            leo_count+= 1
+        if node.nodeType == "HEO":
+            heo_count += 1
+        if node.nodeType == "Ground":
+            groundnode_count += 1
+    print(leo_count, heo_count, groundnode_count, len(totalNodes))
+
     # return k_shortest
     while curr:
-        curr.sort(key=lambda x: x[3])
+        print(f"{len(curr)} items in curr")
         print(f"{i}th iteration")
         i += 1
         next_nodes = []
@@ -416,10 +426,16 @@ def BFS(
             for neighbor_id in start_node.edges.keys():
                 if neighbor_id not in totalNodes:
                     continue
+
                 link = start_node.edges[neighbor_id]
                 neighbor = totalNodes[neighbor_id]
                 if neighbor in visited:
                     continue
+                if start_node.nodeType in {"LEO", "HEO"} and neighbor.nodeType in {"LEO", "HEO"}:
+                    distance = get_distance(start_node.coordinates, neighbor.coordinates)
+                    if distance > max(start_node.communicationRange, neighbor.communicationRange):
+                        print("happened")
+                        continue
                 new_path = path_so_far + (neighbor,)
                 new_visited = visited.union({neighbor})
                 new_cost = path_cost + link.latency
@@ -596,13 +612,13 @@ def main():
         source_node = sfcrs[sfc_id].sourceNode
         cluster_nodes = find_cluster_nodes(nodes, source_node)
         cluster = Cluster(cluster_nodes, source_node)
-        # print("Cluster : ", cluster)
+        print("Cluster : ", cluster)
         available_satellites = find_available_satellites(sfc, cluster, nodes)
-        
+        # continue
         # print("satellites available: ", str([(Satellite.id, Satellite.nodeType) for Satellite in available_satellites.values()]))
         # continue
         totalNodes = dict(cluster_nodes.items() | available_satellites.items())
-        # print([node_id for node_id in totalNodes])
+        print([node_id for node_id in totalNodes])
         isSFCDeployed = algorithm2(sfc, totalNodes, K)
 
         if isSFCDeployed:
