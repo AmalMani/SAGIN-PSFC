@@ -58,10 +58,10 @@ class Satellite(Node):
         self.communication_range = 0
         if self.node_type == 1:
             self.height = random.randint(MIN_LEO_HEIGHT, MAX_LEO_HEIGHT)
-            self.communication_range = self.height + random.randint(100, 500)
+            self.communication_range = int(math.sqrt((self.height * self.height) + (4*CLUSTER_RADIUS * CLUSTER_RADIUS))) + random.randint(2000, 3500)
         else:
             self.height = random.randint(MIN_HEO_HEIGHT, MAX_HEO_HEIGHT)
-            self.communication_range = self.height + random.randint(1000, 10000)
+            self.communication_range = int(math.sqrt((self.height * self.height) + (4*CLUSTER_RADIUS * CLUSTER_RADIUS))) + random.randint(5000, 10000)
 
         a, b, c = random.randint(1, 10), random.randint(1, 10), random.randint(1, 10)
         self.normal_vector = (
@@ -145,6 +145,8 @@ def rec_bfs(min_nodes, max_nodes, src: GroundNode, node_lookup, k):
     while curr:
         next_nodes = []
         for start_node, path_so_far, visited, path_cost in curr:
+            if k_shortest and max(k_shortest, key=lambda x: x[1])[1] < path_cost:
+                continue
             for neighbor_id in start_node.edges.keys():
                 if neighbor_id not in node_lookup:
                     continue
