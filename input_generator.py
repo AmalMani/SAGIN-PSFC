@@ -73,8 +73,8 @@ class Satellite(Node):
             z = z*height_ratio
 
         self.starting_coordinates = (x, y, z)
-        a = random.randint(-5, 5)
-        b = random.randint(-10, 10)
+        a = random.choice([random.randint(-5, -1), random.randint(1, 5)])
+        b = random.choice([random.randint(-10, -1), random.randint(1, 10)])
         c = (-x*a - y*b)/z
         self.normal_vector = (a, b, c )
 
@@ -276,6 +276,8 @@ def main():
         node_id += 1
         add_satellite(new_satellite, satellites, link_list, node_lookup)
         print(cluster)
+        
+    number_of_satellites += len(cluster_list)
         
         
     # number_of_satellite_links = random.randint(number_of_satellites, number_of_satellites*2)
