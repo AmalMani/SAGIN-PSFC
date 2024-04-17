@@ -15,6 +15,7 @@ MAX_LEO_HEIGHT = 2000
 MIN_HEO_HEIGHT = 5000
 MAX_HEO_HEIGHT = 35000
 EARTH_RADIUS = 6371
+LEO_HEO_RATIO = 25
 
 
 class Link:
@@ -50,10 +51,9 @@ class GroundNode(Node):
 
 
 class Satellite(Node):
-    def __init__(self, node_id):
+    def __init__(self, node_id, cluster_coordinates=None, node_type=None):
         super().__init__(node_id)
-
-        self.node_type = random.choice([1, 2])
+        self.node_type = random.choice([1]*int(LEO_HEO_RATIO) + [2]) if node_type is None else node_type
         self.height = None
         self.communication_range = 0
         if self.node_type == 1:
@@ -63,23 +63,22 @@ class Satellite(Node):
             self.height = random.randint(MIN_HEO_HEIGHT, MAX_HEO_HEIGHT)
             self.communication_range = int(math.sqrt((self.height * self.height) + (4*CLUSTER_RADIUS * CLUSTER_RADIUS))) + random.randint(5000, 10000)
 
-        a, b, c = random.randint(1, 10), random.randint(1, 10), random.randint(1, 10)
-        self.normal_vector = (
-            a,
-            b,
-            c,
-        )  # Normal vector to the plane, plane passes through origin
+        if cluster_coordinates is None:
+            x, y, z = get_random_point_at_height(self.height)
+        else:
+            x, y, z = cluster_coordinates
+            height_ratio = (self.height+EARTH_RADIUS)/EARTH_RADIUS
+            x = x*height_ratio
+            y = y*height_ratio
+            z = z*height_ratio
 
-        while True:
-            x = random.randint(-self.height // 4, self.height // 4)
-            k = -1 * a * x
-            m = (EARTH_RADIUS + self.height) ** 2 - x**2
-            check = 4 * (b**2) * (k**2) - 4 * (b**2 + c**2) * (k**2 - (c**2) * m)
-            if check > 0:
-                y = (2 * b * k + math.sqrt(check)) / (2 * (b**2 + c**2))
-                z = (k - b * y) / c
-                self.starting_coordinates = (x, y, z)
-                break
+        self.starting_coordinates = (x, y, z)
+        a = random.randint(-5, 5)
+        b = random.randint(-10, 10)
+        c = (-x*a - y*b)/z
+        self.normal_vector = (a, b, c )
+
+        
 
     def __repr__(self) -> str:
         return f"{self.node_id} {self.cpu_capacity} {self.memory_capacity} {self.node_type} {self.starting_coordinates[0]} {self.starting_coordinates[1]} {self.starting_coordinates[2]} {self.height} {self.communication_range} {self.normal_vector[0]} {self.normal_vector[1]} {self.normal_vector[2]}\n"
@@ -113,6 +112,41 @@ class SFC:
                 repr_str += f"{vnf.vnf_id} {index + 1}\n"
         return repr_str
 
+
+def get_random_point_at_height(height):
+    axis_coordinates = []
+    x = random.randint(height//3, 2*height//3)
+    axis_coordinates.append(x)
+    y = random.randint(0, 2*height//3)
+    axis_coordinates.append(y)
+    axis_coordinates.append(math.sqrt(height**2 - x**2 - y**2))
+    random.shuffle(axis_coordinates)
+    return tuple(axis_coordinates)
+
+
+def add_satellite(new_satellite, satellites, links, node_lookup):
+    
+    for groundnode in node_lookup.values():
+        edge = Link(
+            groundnode.node_id,
+            new_satellite.node_id,
+            get_node_satellite_distance(groundnode, new_satellite)
+            / 200000,
+        )
+        groundnode.edges[new_satellite.node_id] = edge
+        new_satellite.edges[groundnode.node_id] = edge
+        links.append(edge)
+    for old_satellite in satellites:
+        edge = Link(
+            old_satellite.node_id,
+            new_satellite.node_id,
+            get_satellite_distance(old_satellite, new_satellite) / 200000,
+        )
+        old_satellite.edges[new_satellite.node_id] = edge
+        new_satellite.edges[old_satellite.node_id] = edge
+        links.append(edge)
+    satellites.append(new_satellite)
+    
 
 def get_distance(p1, p2):
     x1, y1, z1 = p1
@@ -179,21 +213,14 @@ def main():
     node_id = 0
     node_lookup = dict()
     for i in range(number_of_clusters):
-        x = random.randint(
-            -EARTH_RADIUS + CLUSTER_RADIUS, EARTH_RADIUS - CLUSTER_RADIUS
-        )
-        y = random.randint(
-            -EARTH_RADIUS + CLUSTER_RADIUS + abs(x),
-            EARTH_RADIUS - CLUSTER_RADIUS - abs(x),
-        )
-        z = math.sqrt((EARTH_RADIUS**2 - x**2 - y**2))
+        x, y, z = get_random_point_at_height(EARTH_RADIUS)
         if (x, y, z) in cluster_list:
             continue
         curr_cluster = []
 
         for j in range(random.randint(MIN_NUMBER_OF_CLUSTERS, MAX_NUMBER_OF_CLUSTERS)):
-            x1 = x + random.randint(-CLUSTER_RADIUS // 2, CLUSTER_RADIUS // 2)
-            y1 = y + random.randint(-CLUSTER_RADIUS // 3, CLUSTER_RADIUS // 3)
+            x1 = x + random.randint(-CLUSTER_RADIUS // 3, 0)
+            y1 = y + random.randint(-CLUSTER_RADIUS // 3, 0)
             z1 = math.sqrt((EARTH_RADIUS**2 - x1**2 - y1**2))
             new_node = GroundNode(node_id, (x1, y1, z1))
             node_lookup[node_id] = new_node
@@ -241,28 +268,16 @@ def main():
     for _ in range(number_of_satellites):
         new_satellite = Satellite(node_id)
         node_id += 1
-        for groundnode_id in range(number_of_nodes):
-            edge = Link(
-                groundnode_id,
-                new_satellite.node_id,
-                get_node_satellite_distance(node_lookup[groundnode_id], new_satellite)
-                / 200000,
-            )
-            node_lookup[groundnode_id].edges[new_satellite.node_id] = edge
-            new_satellite.edges[groundnode_id] = edge
-            link_list.append(edge)
-        for old_satellite in satellites:
-            edge = Link(
-                old_satellite.node_id,
-                new_satellite.node_id,
-                get_satellite_distance(old_satellite, new_satellite) / 200000,
-            )
-            old_satellite.edges[new_satellite.node_id] = edge
-            new_satellite.edges[old_satellite.node_id] = edge
-            link_list.append(edge)
+        add_satellite(new_satellite, satellites, link_list, node_lookup)
 
-        satellites.append(new_satellite)
-
+    
+    for cluster in cluster_list.keys():
+        new_satellite = Satellite(node_id, cluster, 2)
+        node_id += 1
+        add_satellite(new_satellite, satellites, link_list, node_lookup)
+        print(cluster)
+        
+        
     # number_of_satellite_links = random.randint(number_of_satellites, number_of_satellites*2)
     # for _ in range(number_of_satellite_links):
     #     a,b = random.sample(satellites, 2)
